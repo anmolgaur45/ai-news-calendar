@@ -1,116 +1,97 @@
 # AI News Calendar
 
-A date-organized timeline for AI news. Think Product Hunt's daily feed, but for everything happening in artificial intelligence — model releases, research papers, company announcements, policy changes, and open source.
+A date-organized timeline for AI news. Pulls from 46 sources, deduplicates via sentence embeddings, scores by significance, and surfaces the day's most important stories.
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-4-38bdf8) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791)
+![Next.js](https://img.shields.io/badge/Next.js-15-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Python](https://img.shields.io/badge/Python-3.12-3776AB) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791) ![GCP](https://img.shields.io/badge/GCP-Cloud_Run-4285F4)
 
-## What it does
+## Architecture
 
-Stories from 46 sources — AI labs, research institutions, and tech press — get pulled in, deduplicated via sentence embeddings, scored by significance, and presented in a clean vertical timeline. Each date section shows the day's most important stories first, with source citations on every card.
+```
+Vercel (Frontend)                    Google Cloud (Backend)
+┌─────────────────────┐     ┌──────────────────────────────┐
+│ Next.js + tRPC      │────▶│ Cloud SQL (Postgres+pgvector) │
+│ Timeline UI         │ SSL │                               │
+└─────────────────────┘     │ Cloud Run Job (Python)        │
+                            │  └─ ingest → embed → cluster  │
+                            │     → impact score             │
+                            │                               │
+                            │ Cloud Scheduler (every 6h)    │
+                            └──────────────────────────────┘
+```
 
-**Sources include:** OpenAI, Anthropic, Google DeepMind, Meta AI, Mistral, DeepSeek, Qwen/Alibaba, Hugging Face, Hacker News, arXiv, MIT Technology Review, The Decoder, Wired, IEEE Spectrum, and more.
+## Monorepo structure
+
+```
+frontend/       # Next.js web application (TypeScript)
+  src/
+    app/        # Pages and API routes
+    components/ # UI components
+    server/     # tRPC routers (read-only DB access)
+    lib/        # Database client, utilities
+    types/      # Shared TypeScript types
+
+pipeline/       # Data ingestion pipeline (Python)
+  src/ainews/
+    ingestors/  # RSS, Hacker News, GitHub release parsers
+    processing/ # Embeddings, clustering, impact scoring
+    sources.py  # Source registry (46 feeds)
+    main.py     # Pipeline orchestrator
+```
 
 ## Features
 
-- **Timeline view** — stories organized by date, sorted by significance score within each day
-- **Deduplication** — sentence embeddings (all-MiniLM-L6-v2) cluster the same story from multiple outlets into one card
-- **Significance scoring** — weighted by source authority, coverage breadth, and LLM-assessed impact
+- **Timeline view** — stories organized by date, sorted by significance score
+- **Deduplication** — sentence embeddings (all-MiniLM-L6-v2) cluster the same story from multiple outlets
+- **Significance scoring** — source authority, coverage breadth, and LLM-assessed impact
 - **Category filtering** — Models, Research, Companies, Products, Policy, Hardware, Open Source, Opinion
-- **Full-text search** — PostgreSQL FTS with synonym expansion (e.g. searching "chatgpt" also hits OpenAI results)
+- **Full-text search** — PostgreSQL FTS with synonym expansion
 - **Source citations** — every card shows the original source, direct link, and timestamp
 
 ## Tech stack
 
 | Layer | Choice |
 |---|---|
-| Frontend | Next.js 15 App Router, TypeScript, Tailwind CSS v4 |
-| API | tRPC v11 + Zod |
-| Database | PostgreSQL with pgvector (local: Supabase) |
-| Embeddings | `all-MiniLM-L6-v2` via `@huggingface/transformers` (ONNX, runs locally) |
+| Frontend | Next.js 15, TypeScript, Tailwind CSS v4, tRPC v11 |
+| Pipeline | Python 3.12, sentence-transformers, feedparser, httpx |
+| Database | PostgreSQL 15 + pgvector (GCP Cloud SQL) |
 | Scoring | Claude Haiku for per-article impact scoring (1–10) |
-| Search | PostgreSQL FTS with GIN index on `headline_tsv` |
+| Hosting | Vercel (frontend), GCP Cloud Run (pipeline) |
+| Scheduling | GCP Cloud Scheduler (cron every 6 hours) |
 
 ## Running locally
 
-**Prerequisites:** Node.js 18+, pnpm, Docker Desktop (for local Supabase)
+### Frontend
 
 ```bash
-# Install deps
+cd frontend
 pnpm install
-
-# Start the local database
-pnpm db:start
-
-# Copy env template and fill in values
-cp .env.local.example .env.local
-
-# Start the dev server
+cp .env.local.example .env.local  # fill in DB credentials
 pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Environment variables
-
-See `.env.local.example` for all required variables. The main ones:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-INGEST_SECRET=
-ANTHROPIC_API_KEY=        # only needed for impact scoring
-NEXT_PUBLIC_URL=          # base URL, defaults to http://localhost:3000
-```
-
-### Running the data pipeline
-
-Once the dev server is running, seed data by calling the API endpoints in order:
+### Pipeline
 
 ```bash
-# 1. Ingest articles from all sources
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Authorization: Bearer <your-ingest-secret>"
-
-# 2. Generate embeddings (run until remaining hits 0)
-curl -X POST http://localhost:3000/api/embed-backfill \
-  -H "Authorization: Bearer <your-ingest-secret>"
-
-# 3. Score articles with LLM impact scoring
-curl -X POST http://localhost:3000/api/impact-backfill \
-  -H "Authorization: Bearer <your-ingest-secret>"
+cd pipeline
+python -m venv .venv
+source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+pip install -e ".[dev]"
+python -m ainews.main
 ```
-
-Steps 2 and 3 process 50 articles per call — loop until `remaining` returns 0.
 
 ## Database
 
-Migrations live in `supabase/migrations/` and are applied in order. To reset the local DB:
+Migrations live in `pipeline/migrations/` and target PostgreSQL 15 with the `vector` extension. The schema includes:
 
-```bash
-pnpm db:reset   # wipes data and reapplies all migrations
-pnpm db:status  # show local URLs and connection string
-```
-
-The local Supabase Studio (DB GUI) runs at [http://127.0.0.1:54323](http://127.0.0.1:54323) when the stack is up.
-
-## Project structure
-
-```
-src/
-  app/          # Next.js app router pages and API routes
-  components/   # UI components (StoryCard, DateSection, SearchBar, etc.)
-  ingestion/    # Feed parsers, clustering, significance scoring
-  lib/          # Supabase client, rate limiting, utilities
-  server/       # tRPC routers
-  types/        # Shared TypeScript types
-supabase/
-  migrations/   # PostgreSQL schema and function migrations
-```
+- `articles` — ingested articles with 384-dim embeddings and impact scores
+- `clusters` — deduplicated story groups with significance scores and FTS index
+- `find_nearest_article()` — pgvector ANN search function for clustering
 
 ## Deduplication
 
-Articles are embedded using `all-MiniLM-L6-v2` (384-dim vectors stored in pgvector). When a new article is ingested, an ANN search finds similar articles published in the last 48 hours. If cosine distance is below 0.25, the article is clustered with its neighbors. The cluster headline comes from the highest-significance article in the group.
+Articles are embedded with `all-MiniLM-L6-v2` (384-dim vectors). On ingestion, an ANN search finds similar articles in the last 48 hours. If cosine distance is below 0.25, articles are clustered together. The algorithm prefers joining existing clusters over creating new pairings, which handles syndicated news effectively.
 
 ## License
 

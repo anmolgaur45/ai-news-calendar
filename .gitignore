@@ -1,25 +1,29 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# ── Frontend (Next.js) ──────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+frontend/coverage/
+frontend/build/
 
-# testing
-/coverage
+# ── Pipeline (Python) ──────────────────────────────
+pipeline/.venv/
+pipeline/__pycache__/
+pipeline/src/**/__pycache__/
+pipeline/*.egg-info/
+pipeline/dist/
+pipeline/build/
+pipeline/.ruff_cache/
+pipeline/.pytest_cache/
 
-# next.js
-/.next/
-/out/
-next-env.d.ts
-
-# production
-/build
-
-# misc
+# ── Shared ──────────────────────────────────────────
 .DS_Store
 *.pem
 
@@ -31,7 +35,7 @@ yarn-error.log*
 
 # env files
 .env*
-!.env.local.example
+!frontend/.env.local.example
 
 # vercel
 .vercel
@@ -41,11 +45,18 @@ yarn-error.log*
 
 # internal / dev tooling
 tasks/
+PLAN.md
+plan.md
 CLAUDE.md
+claude.md
 AGENTS.md
+.cursorrules
+.claude/
+.antigravity/
+.cursor/
 AI_News_Calendar_Research.docx
 memory/
 
 # supabase local state
-supabase/.branches/
-supabase/.temp/
+frontend/supabase/.branches/
+frontend/supabase/.temp/
