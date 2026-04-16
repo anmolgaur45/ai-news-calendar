@@ -24,6 +24,10 @@ pipeline/.ruff_cache/
 pipeline/.pytest_cache/
 
 # ── Shared ──────────────────────────────────────────
+# Catch leftover build artifacts at any depth
+node_modules/
+.next/
+.vscode/
 .DS_Store
 *.pem
 
