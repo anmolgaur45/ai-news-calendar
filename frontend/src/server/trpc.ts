@@ -1,12 +1,10 @@
 import { initTRPC } from '@trpc/server'
-import { createClient } from '@/lib/supabase-server'
 
-export async function createContext() {
-  const supabase = await createClient()
-  return { supabase }
+export function createContext() {
+  return {}
 }
 
-export type Context = Awaited<ReturnType<typeof createContext>>
+export type Context = ReturnType<typeof createContext>
 
 const t = initTRPC.context<Context>().create()
 

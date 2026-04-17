@@ -6,26 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "db:start": "supabase start",
-    "db:stop": "supabase stop",
-    "db:reset": "supabase db reset",
-    "db:status": "supabase status"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
-    "@huggingface/transformers": "^3.8.1",
-    "@supabase/ssr": "^0.9.0",
-    "@supabase/supabase-js": "^2.100.0",
     "@tanstack/react-query": "^5.95.2",
     "@trpc/client": "^11.15.0",
     "@trpc/react-query": "^11.15.0",
     "@trpc/server": "^11.15.0",
     "framer-motion": "^12.38.0",
     "next": "16.2.1",
+    "postgres": "^3.4.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "rss-parser": "^3.13.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -35,7 +27,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
-    "supabase": "^2.84.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -6,11 +6,7 @@ import type { Article, Cluster, Category } from '@/types/article'
 
 // ─── Significance score display ────────────────────────────────────────────
 
-/** Normalize raw DB score to a 1–10 user-facing scale. */
-function normalizeScore(raw: number): number {
-  return Math.min(10, Math.max(1, Math.round((raw * 10) / 20)))
-}
-
+// significance_score is already stored as a normalized 1–10 value by the pipeline
 function scoreColor(score: number): string {
   if (score >= 8) return 'text-amber-400'
   if (score >= 5) return 'text-blue-400'
@@ -103,7 +99,7 @@ export function StoryCard({ cluster, showDate = false }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const primaryArticle = cluster.articles[0]
   const category = (cluster.category as Category) ?? 'uncategorized'
-  const score = normalizeScore(cluster.significance_score ?? 0)
+  const score = Math.min(10, Math.max(1, Math.round(cluster.significance_score ?? 0)))
 
   return (
     <div
