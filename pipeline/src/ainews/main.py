@@ -1,0 +1,127 @@
+import structlog
+import psycopg
+
+from . import db
+from .config import settings
+from .models import NormalizedArticle
+from .sources import RSS_SOURCES
+from .ingestors.rss import ingest_rss
+from .ingestors.hackernews import ingest_hn
+from .ingestors.github import ingest_github
+from .processing.embeddings import embed_pending
+from .processing.scoring import score_pending
+from .processing.clustering import cluster_pending
+
+log = structlog.get_logger()
+
+
+def ingest_all() -> list[NormalizedArticle]:
+    all_articles: list[NormalizedArticle] = []
+
+    for source in RSS_SOURCES:
+        all_articles.extend(ingest_rss(source))
+
+    all_articles.extend(ingest_hn())
+    all_articles.extend(ingest_github())
+
+    return all_articles
+
+
+def dedup_by_url(articles: list[NormalizedArticle]) -> list[NormalizedArticle]:
+    seen: dict[str, NormalizedArticle] = {}
+    for article in articles:
+        if article.source_url not in seen:
+            seen[article.source_url] = article
+    return list(seen.values())
+
+
+def filter_existing(conn: psycopg.Connection, articles: list[NormalizedArticle]) -> list[NormalizedArticle]:
+    if not articles:
+        return []
+
+    urls = [a.source_url for a in articles]
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT source_url FROM articles WHERE source_url = ANY(%s)",
+            (urls,),
+        )
+        existing = {row[0] for row in cur.fetchall()}
+
+    return [a for a in articles if a.source_url not in existing]
+
+
+def upsert_articles(conn: psycopg.Connection, articles: list[NormalizedArticle]) -> None:
+    if not articles:
+        return
+
+    rows = [
+        (
+            a.title, a.body_excerpt, a.source_name, a.source_url,
+            a.author, a.published_at, a.raw_category, a.significance_base,
+        )
+        for a in articles
+    ]
+
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO articles
+                (title, body_excerpt, source_name, source_url, author,
+                 published_at, raw_category, significance_base)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (source_url) DO NOTHING
+            """,
+            rows,
+        )
+    conn.commit()
+
+
+def main() -> None:
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ]
+    )
+
+    log.info("pipeline.start")
+
+    conn = db.get_connection()
+    try:
+        log.info("pipeline.ingesting")
+        raw = ingest_all()
+        log.info("pipeline.ingested", total=len(raw))
+
+        unique = dedup_by_url(raw)
+        log.info("pipeline.deduped", unique=len(unique))
+
+        new_articles = filter_existing(conn, unique)
+        log.info("pipeline.new", new=len(new_articles), skipped=len(unique) - len(new_articles))
+
+        upsert_articles(conn, new_articles)
+        log.info("pipeline.upserted", count=len(new_articles))
+
+        embedded = embed_pending(conn)
+        log.info("pipeline.embedded", count=embedded)
+
+        scored = score_pending(conn)
+        log.info("pipeline.scored", count=scored)
+
+        clustered = cluster_pending(
+            conn,
+            distance_threshold=settings.cluster_distance_threshold,
+            window_hours=settings.cluster_window_hours,
+        )
+        log.info("pipeline.clustered", count=clustered)
+
+        log.info("pipeline.done", ingested=len(new_articles), embedded=embedded, scored=scored, clustered=clustered)
+    except Exception as exc:
+        log.error("pipeline.failed", error=str(exc))
+        raise
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

@@ -18,6 +18,7 @@ pipeline/.venv/
 pipeline/__pycache__/
 pipeline/src/**/__pycache__/
 pipeline/*.egg-info/
+pipeline/**/*.egg-info/
 pipeline/dist/
 pipeline/build/
 pipeline/.ruff_cache/
